@@ -1,5 +1,4 @@
 use serde::{Serialize, Deserialize};
-use crate::apis::f1tv::types::{Subscriber, SubscriptionData};
 use crate::apis::f1tv::{LOGIN_ENDPOINT, API_KEY};
 
 #[derive(Serialize)]
@@ -19,6 +18,24 @@ pub struct SuccessfulLoginResponse {
 
     #[serde(rename(deserialize = "data"))]
     data:                   SubscriptionData
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Subscriber {
+    pub first_name:     String,
+    pub last_name:      String,
+    pub home_country:   String,
+    pub id:             i64,
+    pub email:          String,
+    pub login:          String
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionData {
+    pub subscription_status:    String,
+    pub subscription_token:     String
 }
 
 #[derive(Deserialize)]
