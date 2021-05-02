@@ -1,10 +1,13 @@
 use colored::Colorize;
-use chrono::Datelike;
 use std::time::Duration;
+use crate::apis::f1tv::{get_live_sessions, RetrieveItemsContainer};
+use std::collections::HashMap;
+use crate::apis::f1tv::playback::get_playback_url;
+use crate::config::Config;
 
 mod config;
 mod apis;
-mod race_tracker;
+mod ffmpeg;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -23,7 +26,8 @@ fn main() {
     }
 
     print!("Attempting to log in to F1TV...");
-    let login_response = apis::f1tv::login::do_login(&cfg.f1_username.unwrap(), &cfg.f1_password.unwrap());
+    let cfg_cloned = cfg.clone();
+    let login_response = apis::f1tv::login::do_login(&cfg_cloned.f1_username.unwrap(), &cfg_cloned.f1_password.unwrap());
     if login_response.is_err() {
         print!("{}\n", "FAIL".red());
 
@@ -39,69 +43,78 @@ fn main() {
         print!("{}\n", "OK".green());
     }
 
-    refresh_races();
+    if cfg.tmpurl.is_some() {
+        let url = cfg.clone().tmpurl.unwrap();
+        ffmpeg::stream(url, 0, cfg);
+    } else {
+        refresh_races(cfg);
+    }
 }
 
 const REFRESH_INTERVAL_SECONDS: u64 = 60;
 
-fn refresh_races() {
+fn refresh_races(cfg: Config) {
     std::thread::spawn(move || {
-        let mut discovered_session_ids: Vec<String> = Vec::new();
-        loop {
-            print!("Fetching F1 {} Meetings...", chrono::Utc::now().year());
-            let events = apis::f1tv::get_meetings();
-            let events = if events.is_err() {
+        'infinite_loop: loop {
+            print!("Fetching live sessions...");
+            let sessions = get_live_sessions();
+            if sessions.is_err() {
                 print!("{}\n", "FAIL".red());
-                println!("{:?}", events.err().unwrap());
+                println!("{}", sessions.err().unwrap());
 
                 std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
-                continue;
             } else {
                 print!("{}\n", "OK".green());
-                events.unwrap()
-            };
+                let sessions_unwrapped = sessions.unwrap();
 
-            let mut new_events = 0;
-            for event in events.result_obj.containers {
-                if event.metadata.emf_attributes.meeting_key.is_empty() {
-                    continue;
-                }
-
-                if discovered_session_ids.contains(&event.id) {
-                    continue;
-                }
-
-                new_events += 1;
-                print!("Fetching Live Sessions for '{}' with meeting key '{}' and id '{}'...", event.metadata.emf_attributes.meeting_name, &event.metadata.emf_attributes.meeting_key, &event.id);
-                let live_sessions = apis::f1tv::get_live_sessions(&event.metadata.emf_attributes.meeting_key);
-
-                if live_sessions.is_err() {
-                    print!("{}\n", "FAIL".red());
-                    println!("{:?}", live_sessions.err().unwrap());
-                    std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
-                    continue;
-                } else {
-                    print!("{}\n", "OK".green());
-                    let live_sessions = live_sessions.unwrap();
-                    discovered_session_ids.push(event.id);
-
-                    if live_sessions.len() > 0 {
-                        //TODO Fetch live session HLS url and start streaming to Blue's ingress
-                        //Should do that on a different thread, and keep track of if we're already streaming.
+                let mut final_sessions: HashMap<String, RetrieveItemsContainer> = HashMap::new();
+                for ct in sessions_unwrapped {
+                    if final_sessions.contains_key(&ct.id) {
+                        continue;
                     }
+
+                    final_sessions.insert(ct.id.clone(), ct.clone());
                 }
 
-                //Every 50 items we'll sleep for 10 seconds, as to avoid hitting rate limits.
-                if new_events % 50 == 0 {
-                    print!("Sleeping for 10 seconds to avoid hitting F1TV rate limits...");
-                    std::thread::sleep(Duration::from_secs(10));
-                    print!("{}\n", "OK".green());
+                println!("Found {} live sessions!", final_sessions.len());
+                let subscription_token: Option<String> = if final_sessions.len() > 0 {
+                    let response_wrapped = apis::f1tv::login::do_login(&cfg.f1_username.clone().unwrap(), &cfg.f1_password.clone().unwrap());
+                    if response_wrapped.is_err() {
+                        print!("Failed to log in to F1TV. ");
+
+                        match response_wrapped.err().unwrap().status {
+                            Some(503) => {
+                                println!("Got status code 503. Retrying in {} seconds.", REFRESH_INTERVAL_SECONDS);
+                                continue 'infinite_loop;
+                            },
+                            Some(403) => {
+                                println!("Got status code 403. Are your credentials correct? Exiting.");
+                                std::process::exit(1);
+                            },
+                            _ => {
+                                println!("Unknown error. Retrying in {} seconds.", REFRESH_INTERVAL_SECONDS);
+                                std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
+                                continue 'infinite_loop;
+                            }
+                        }
+                    }
+
+                    let response = response_wrapped.unwrap();
+                    Some(response.data.subscription_token)
+                } else {
+                    None
+                };
+
+                for (_, v) in final_sessions {
+                    let hls = get_playback_url(&subscription_token.clone().unwrap(), &v.id).expect("Failed to get HLS Stream");
+                    println!("Starting FFMPEG streams.");
+                    ffmpeg::stream(hls, v.metadata.duration, cfg.clone())
                 }
+
+                println!("Sleeping for {} seconds.", REFRESH_INTERVAL_SECONDS);
+                std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
+                continue;
             }
-
-            println!("Retrieved {} new events. Sleeping for {} seconds.", new_events, REFRESH_INTERVAL_SECONDS);
-            std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
-
         }
-    }).join();
+    }).join().expect("");
 }

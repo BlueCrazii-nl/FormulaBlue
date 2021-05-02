@@ -10,14 +10,15 @@ struct LoginRequest<'a> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[allow(dead_code)]
 pub struct SuccessfulLoginResponse {
-    session_id:             String,
-    password_is_temporary:  bool,
-    subscriber:             Subscriber,
-    country:                String,
+    pub session_id:             String,
+    pub password_is_temporary:  bool,
+    pub subscriber:             Subscriber,
+    pub country:                String,
 
     #[serde(rename(deserialize = "data"))]
-    data:                   SubscriptionData
+    pub data:                   SubscriptionData
 }
 
 #[derive(Deserialize)]
@@ -38,7 +39,7 @@ pub struct SubscriptionData {
     pub subscription_token:     String
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct FailedLoginResponse {
     pub status: Option<u16>,

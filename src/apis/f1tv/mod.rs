@@ -1,4 +1,3 @@
-use chrono::Datelike;
 use serde::Deserialize;
 
 pub mod login;
@@ -10,123 +9,74 @@ pub const LOGIN_ENDPOINT: &str = "https://api.formula1.com/v2/account/subscriber
 pub const BASE_URL: &str = "https://f1tv.formula1.com";
 pub const DEFAULT_STREAM_TYPE: &str = "BIG_SCREEN_HLS";
 
-pub const VOD_URL: &str = "/2.0/R/ENG/BIG_SCREEN_HLS/ALL/PAGE/SEARCH/VOD/F1_TV_Pro_Annual/2";
-
-
-#[derive(Deserialize, Debug)]
-pub struct EventLiveSessionsResponse {
-    #[serde(rename(deserialize = "resultObj"))]
-    pub result_obj: ResultObject<LiveRacesContainer>
-}
-
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ResultObject<T> {
     pub containers: Vec<T>
 }
 
-#[derive(Deserialize, Debug)]
-pub struct OuterContainer<T> {
-    pub containers: ResultObject<T>
-}
-
-#[derive(Deserialize, Debug)]
-pub struct LiveRacesContainer {
-    pub id:         String,
-    pub metadata:   Metadata
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Metadata {
-    pub title:      String,
-
-    #[serde(default)]
-    #[serde(rename(deserialize = "objectType"))]
-    pub object_type:    ObjectType,
-    pub duration:       u32,
-
-    #[serde(rename(deserialize = "emfAttributes"))]
-    pub emf_attributes: EmfAttributes
-}
-
-#[derive(Deserialize, Debug)]
-pub struct SeasonMeetingResponse {
+#[derive(Deserialize, Debug, Clone)]
+pub struct LiveSessionResponse {
     #[serde(rename(deserialize = "resultObj"))]
-    pub result_obj: ResultObject<SeasonEventContainer>
+    pub result_obj: ResultObject<LiveSessionContainer>
 }
 
-#[derive(Deserialize, Debug)]
-pub struct SeasonEventContainer {
-    pub id:         String,
-    pub metadata:   Metadata
+#[derive(Deserialize, Debug, Clone)]
+pub struct LiveSessionContainer {
+    #[serde(rename(deserialize = "retrieveItems"))]
+    pub retrieve_items: RetrieveItems
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+pub struct RetrieveItems {
+    #[serde(rename(deserialize = "resultObj"))]
+    pub result_obj: ResultObject<RetrieveItemsContainer>
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RetrieveItemsContainer {
+    pub id: String,
+    pub metadata: Metadata
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Metadata {
+    #[serde(rename(deserialize = "emfAttributes"))]
+    pub emf_attributes: EmfAttributes,
+    #[serde(rename(deserialize = "longDescription"))]
+    pub long_description: String,
+    #[serde(rename(deserialize = "objectType"))]
+    pub object_type: String,
+    #[serde(rename(deserialize = "contentSubtype"))]
+    pub content_sub_type: Option<String>,
+    pub duration: i64
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct EmfAttributes {
-    #[serde(rename(deserialize = "MeetingKey"))]
-    pub meeting_key:    String,
-
     #[serde(rename(deserialize = "Meeting_Name"))]
-    pub meeting_name:   String
+    pub meeting_name:   String,
+    #[serde(rename(deserialize = "MeetingKey"))]
+    pub meeting_key:    String
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum ObjectType {
-    Video,
-    Live,
-    Bundle,
-    Image,
-    Unknown
-}
-
-impl Default for ObjectType {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
-
-pub fn get_live_sessions(meeting_key: &str) -> reqwest::Result<Vec<LiveRacesContainer>> {
-    let req: EventLiveSessionsResponse = reqwest::blocking::Client::new().get(format!("{}{}", BASE_URL, VOD_URL))
-        .query(&[
-            ("orderBy", "meeting_End_Date"),
-            ("sortOrder", "asc"),
-            ("filter_MeetingKey", meeting_key),
-            ("filter_orderByFom", "Y"),
-            ("maxResults", "100")])
+pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {
+    let req: LiveSessionResponse = reqwest::blocking::Client::new().get(format!("{}/2.0/R/ENG/{DEFAULT_STREAM_TYPE}/ALL/PAGE/395/F1_TV_Pro_Annual/2", BASE_URL, DEFAULT_STREAM_TYPE = DEFAULT_STREAM_TYPE))
         .send()?
         .json()?;
-        //.text()?;
 
-    //println!("{:?}", req);
-    //std::process::exit(1);
 
-    let mut live_responses: Vec<LiveRacesContainer> = Vec::new();
-    for ct in req.result_obj.containers {
-        match ct.metadata.object_type {
-            ObjectType::Live => live_responses.push(ct),
-            _ => continue
+    let mut live_responses: Vec<RetrieveItemsContainer> = Vec::new();
+    for ct_outer in req.result_obj.containers {
+        'inner: for ct_inner in ct_outer.retrieve_items.result_obj.containers {
+            if ct_inner.metadata.content_sub_type.is_none() {
+                continue 'inner;
+            }
+
+            if ct_inner.metadata.object_type == "VIDEO" && ct_inner.metadata.content_sub_type.clone().unwrap() == "LIVE" {
+                live_responses.push(ct_inner)
+            }
         }
     }
 
-
-    //Ok(vec![LiveRacesContainer { metadata: Metadata { object_type: ObjectType::Live, emf_attributes: EmfAttributes { meeting_name: "".to_string(), meeting_key: "".to_string()}, title: "".to_string(), duration: 0}, id: "".to_string()}])
-
     Ok(live_responses)
-}
-
-pub fn get_meetings() -> reqwest::Result<SeasonMeetingResponse> {
-    let req = reqwest::blocking::Client::new().get(format!("{}{}", BASE_URL, VOD_URL))
-        .query(&[
-            ("orderBy", "meeting_Number"),
-            ("sort_by", "asc"),
-            ("filter_objectSubType", "Meeting"),
-            ("filter_season", &chrono::Utc::now().year().to_string()),
-            ("filter_orderByFom", "Y"),
-            ("maxResults", "100")
-        ])
-        .header("User-Agent", "FormulaBlue")
-        .send()?
-        .json()?;
-
-    Ok(req)
 }
