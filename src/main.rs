@@ -51,7 +51,7 @@ fn main() {
     }
 }
 
-const REFRESH_INTERVAL_SECONDS: u64 = 60;
+const REFRESH_INTERVAL_SECONDS: u64 = 10;
 
 fn refresh_races(cfg: Config) {
     std::thread::spawn(move || {
