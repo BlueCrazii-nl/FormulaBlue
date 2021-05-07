@@ -23,8 +23,8 @@ steps:
     - rm -rf $HOME/.ssh/config
     - touch $HOME/.ssh/config
     - echo "Host *\n\tStrictHostKeyChecking no" > $HOME/.ssh/config
-    
-    - rsync -ah --progress -e target/release/formula_blue droneci@192.168.1.40:/tmp/formula_blue
+
+    - rsync -ah --progress target/release/formula_blue droneci@192.168.1.40:/tmp/formula_blue
     - ssh droneci@192.168.1.40 sudo mv /tmp/formula_blue /usr/local/bin/formula_blue
     - ssh droneci@192.168.1.40 sudo chmod +x /usr/local/bin/formula_blue
     - ssh droneci@192.168.1.40 sudo systemctl restart formulablue
