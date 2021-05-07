@@ -18,6 +18,7 @@ steps:
     - apt update && apt install -y rsync openssh-client
     - mkdir -p $HOME/.ssh/
     - echo $SSH_KEY > $HOME/.ssh/id_ed25519
+    - chmod 600 $HOME/.ssh/id_ed25519
     - rm -rf $HOME/.ssh/config
     - touch $HOME/.ssh/config
     - echo "Host *\n\tStrictHostKeyChecking no" > $HOME/.ssh/config
