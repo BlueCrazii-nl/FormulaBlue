@@ -15,13 +15,22 @@ steps:
       SSH_KEY:
         from_secret: ssh_key
     commands:
-    - apt update && apt install -y rsync
+    - apt update && apt install -y rsync openssh-client
     - mkdir -p $HOME/.ssh/
     - echo $SSH_KEY > $HOME/.ssh/id_ed25519
     - rsync -ah --progress -e "ssh -i $HOME/.ssh/id_ed25519" target/release/formula_blue droneci@192.168.1.40:/tmp/formula_blue
     - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo mv /tmp/formula_blue /usr/local/bin/formula_blue
     - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo chmod +x /usr/local/bin/formula_blue
     - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo systemctl restart formulablue
+
+  - name: slack
+    image: plugins/slack
+    settings:
+      webhook:
+        from_secret: discord_webhook
+      username: Drone CI/CD - FormulaBlue
+    when:
+      status: [ failure ]
 
 trigger:
   branch:
