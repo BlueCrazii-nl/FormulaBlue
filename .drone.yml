@@ -18,6 +18,10 @@ steps:
     - apt update && apt install -y rsync openssh-client
     - mkdir -p $HOME/.ssh/
     - echo $SSH_KEY > $HOME/.ssh/id_ed25519
+    - tee -a $HOME/.ssh/config <<EOT
+      Host *
+        StrictHostKeyChecking no
+      EOT
     - rsync -ah --progress -e "ssh -i $HOME/.ssh/id_ed25519" target/release/formula_blue droneci@192.168.1.40:/tmp/formula_blue
     - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo mv /tmp/formula_blue /usr/local/bin/formula_blue
     - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo chmod +x /usr/local/bin/formula_blue
