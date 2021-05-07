@@ -56,7 +56,9 @@ pub struct EmfAttributes {
     #[serde(rename(deserialize = "Meeting_Name"))]
     pub meeting_name:   String,
     #[serde(rename(deserialize = "MeetingKey"))]
-    pub meeting_key:    String
+    pub meeting_key:    String,
+    #[serde(rename(deserialize = "sessionEndDate"))]
+    pub session_end_date: i64
 }
 
 pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {

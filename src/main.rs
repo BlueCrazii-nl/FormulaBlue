@@ -45,7 +45,7 @@ fn main() {
 
     if cfg.tmpurl.is_some() {
         let url = cfg.clone().tmpurl.unwrap();
-        ffmpeg::stream(url, 0, cfg);
+        ffmpeg::stream(url, chrono::Utc::now().timestamp() + (60_i64 * 60_i64), cfg);
     } else {
         refresh_races(cfg);
     }
@@ -108,7 +108,7 @@ fn refresh_races(cfg: Config) {
                 for (_, v) in final_sessions {
                     let hls = get_playback_url(&subscription_token.clone().unwrap(), &v.id).expect("Failed to get HLS Stream");
                     println!("Starting FFMPEG streams.");
-                    ffmpeg::stream(hls, v.metadata.duration, cfg.clone())
+                    ffmpeg::stream(hls, v.metadata.emf_attributes.session_end_date, cfg.clone())
                 }
 
                 println!("Sleeping for {} seconds.", REFRESH_INTERVAL_SECONDS);
