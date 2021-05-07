@@ -17,6 +17,7 @@ steps:
     commands:
     - apt update && apt install -y rsync openssh-client dos2unix
     - mkdir -p $HOME/.ssh/
+    - eval `ssh-agent`
     - echo "$SSH_KEY" | tr -d '\r' | ssh-add - > /dev/null
 
     - rm -rf $HOME/.ssh/config
