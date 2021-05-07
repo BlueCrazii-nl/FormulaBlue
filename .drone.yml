@@ -18,6 +18,7 @@ steps:
     - apt update && apt install -y rsync openssh-client
     - mkdir -p $HOME/.ssh/
     - echo $SSH_KEY > $HOME/.ssh/id_ed25519
+    - touch $HOME/.ssh/config
     - tee -a $HOME/.ssh/config <<EOT
       Host *
         StrictHostKeyChecking no
