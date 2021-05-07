@@ -1,0 +1,28 @@
+kind: pipeline
+type: kubernetes
+name: formulablue
+
+steps:
+  - name: Build with Cargo
+    image: rust:latest
+    commands:
+    - cargo build --release
+
+  - name: Upload to tmpfiles
+    image: ubuntu:latest
+    environment:
+      DEBIAN_FRONTEND: noninteractive
+      SSH_KEY:
+        from_secret: ssh_key
+    commands:
+    - apt update && apt install -y rsync
+    - mkdir -p $HOME/.ssh/
+    - echo $SSH_KEY > $HOME/.ssh/id_ed25519
+    - rsync -ah --progress -e "ssh -i $HOME/.ssh/id_ed25519" target/release/formula_blue droneci@192.168.1.40:/tmp/formula_blue
+    - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo mv /tmp/formula_blue /usr/local/bin/formula_blue
+    - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo chmod +x /usr/local/bin/formula_blue
+    - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo systemctl restart formulablue
+
+trigger:
+  branch:
+  - master
