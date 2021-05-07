@@ -20,10 +20,7 @@ steps:
     - echo $SSH_KEY > $HOME/.ssh/id_ed25519
     - rm -rf $HOME/.ssh/config
     - touch $HOME/.ssh/config
-    - tee $HOME/.ssh/config <<END
-      Host *
-        StrictHostKeyChecking no
-      END
+    - echo "Host *\n\tStrictHostKeyChecking no" > $HOME/.ssh/config
     - rsync -ah --progress -e "ssh -i $HOME/.ssh/id_ed25519" target/release/formula_blue droneci@192.168.1.40:/tmp/formula_blue
     - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo mv /tmp/formula_blue /usr/local/bin/formula_blue
     - ssh -i $HOME/.ssh/id_ed25519 droneci@192.168.1.40 sudo chmod +x /usr/local/bin/formula_blue
