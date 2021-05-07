@@ -8,7 +8,7 @@ steps:
     commands:
     - cargo build --release
 
-  - name: Upload to tmpfiles
+  - name: Deploy to server
     image: ubuntu:latest
     environment:
       DEBIAN_FRONTEND: noninteractive
