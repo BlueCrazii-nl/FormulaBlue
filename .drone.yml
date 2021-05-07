@@ -19,6 +19,12 @@ steps:
     - mkdir -p $HOME/.ssh/
     - echo $SSH_KEY > $HOME/.ssh/id_ed25519
     - chmod 600 $HOME/.ssh/id_ed25519
+
+    # Fix the line endings of the private key
+    # https://serverfault.com/a/960647
+    - tr -d '\015' <DOS-file > $HOME/.ssh/id_ed25519
+    - sed -i -e '$a\' $HOME/.ssh/id_ed25519
+
     - rm -rf $HOME/.ssh/config
     - touch $HOME/.ssh/config
     - echo "Host *\n\tStrictHostKeyChecking no" > $HOME/.ssh/config
