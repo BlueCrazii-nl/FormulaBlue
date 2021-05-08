@@ -1,0 +1,11 @@
+Starting FormulaBlue v0.1.0
+Reading configuration...OK
+Attempting to log in to F1TV...OK
+Fetching live sessions...OK
+Found 1 live sessions!
+Starting FFMPEG streams.
+Starting ENG Stream
+Failed to log in to F1TV. Got status code 503.
+Failed to log in to F1TV. Got status code 503.
+Failed to log in to F1TV. Got status code 503.
+Failed to log in to F1TV. Got status code 503.

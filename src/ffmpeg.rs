@@ -34,6 +34,8 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
 
     //ENG loop
     std::thread::spawn(move || {
+        println!("Starting ENG Stream");
+
         while chrono::Utc::now().timestamp() < end_time {
             let subscription_token = crate::apis::f1tv::login::get_subscription_token(cfg_2.clone());
             let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token.unwrap(), &session_id);

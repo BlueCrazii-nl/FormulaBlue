@@ -1,6 +1,7 @@
 use serde::{Serialize, Deserialize};
 use crate::apis::f1tv::{LOGIN_ENDPOINT, API_KEY};
 use crate::config::Config;
+use std::time::Duration;
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -86,7 +87,8 @@ pub fn get_subscription_token(cfg: Config) -> Option<String> {
             match response_wrapped.err().unwrap().status {
                 Some(503) => {
                     println!("Got status code 503.");
-                    return None;
+                    std::thread::sleep(Duration::from_secs(5));
+                    return get_subscription_token(cfg);
                 },
                 Some(403) => {
                     println!("Got status code 403. Are your credentials correct? Exiting.");
