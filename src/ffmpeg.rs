@@ -14,12 +14,14 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
 
     let end_time = end_time + 10i64 * 60i64;
 
+    let subscription_token = crate::apis::f1tv::login::get_subscription_token(cfg_1.clone()).unwrap();
+    let subscription_token_1 = crate::apis::f1tv::login::get_subscription_token(cfg_1.clone()).unwrap();
+
     //NED loop
     let session_id_1 = session_id.clone();
     std::thread::spawn(move || {
         while chrono::Utc::now().timestamp() < end_time {
-            let subscription_token = crate::apis::f1tv::login::get_subscription_token(cfg_1.clone());
-            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token.unwrap(), &session_id_1);
+            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token, &session_id_1);
 
             //Construct the FFMPEG command for the NED stream
             let ffmpeg_command = ffmpeg_str_1
@@ -37,8 +39,7 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
         println!("Starting ENG Stream");
 
         while chrono::Utc::now().timestamp() < end_time {
-            let subscription_token = crate::apis::f1tv::login::get_subscription_token(cfg_2.clone());
-            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token.unwrap(), &session_id);
+            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_1, &session_id);
 
             //Construct the FFMPEG command for the NED stream
             let ffmpeg_command = ffmpeg_str.clone()
