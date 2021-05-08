@@ -30,7 +30,7 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
                 .replace("{lang}", "nld")
                 .replace("{key}", &cfg_1.clone().ned_key.unwrap());
 
-            stream_ned(ffmpeg_command, end_time);
+            run_ffmpeg(ffmpeg_command, end_time);
         }
     });
 
@@ -48,12 +48,12 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
                 .replace("{lang}", "eng")
                 .replace("{key}", &cfg_2.clone().eng_key.unwrap());
 
-            stream_eng(ffmpeg_command, end_time);
+            run_ffmpeg(ffmpeg_command, end_time);
         }
     }).join().unwrap();
 }
 
-fn stream_ned(ffmpeg_command: String, end_time: i64) {
+fn run_ffmpeg(ffmpeg_command: String, end_time: i64) {
     let mut child = {
         Command::new("sh")
             .arg("-c")
@@ -63,28 +63,6 @@ fn stream_ned(ffmpeg_command: String, end_time: i64) {
     };
 
     while chrono::Utc::now().timestamp() < end_time {
-        //Check if the command has exited
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            _ => {}
-        }
-
-        std::thread::sleep(Duration::from_secs(5));
-    }
-
-    child.kill().expect("Unable to kill ffmpeg");
-}
-
-fn stream_eng(ffmpeg_command: String, end_time: i64) {
-    let mut child = {
-        Command::new("sh")
-            .arg("-c")
-            .arg(&ffmpeg_command)
-            .spawn()
-            .expect("Unable to launch ffmpeg")
-    };
-
-    while chrono::Utc::now().timestamp() > end_time {
         //Check if the command has exited
         match child.try_wait() {
             Ok(Some(_)) => break,
