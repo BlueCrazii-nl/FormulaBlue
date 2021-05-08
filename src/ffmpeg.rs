@@ -47,7 +47,7 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
 
             stream_eng(ffmpeg_command, end_time);
         }
-    });
+    }).join().unwrap();
 }
 
 fn stream_ned(ffmpeg_command: String, end_time: i64) {
