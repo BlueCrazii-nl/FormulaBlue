@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 
 pub mod login;
 pub mod playback;
@@ -79,7 +80,7 @@ pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {
             if ct_inner.metadata.content_sub_type.is_none() {
                 continue 'inner;
             }
-            
+
             if ct_inner.properties.is_some() && ct_inner.properties.clone().unwrap().get(0).unwrap().series != "FORMULA 1" {
                 continue;
             }
@@ -90,5 +91,20 @@ pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {
         }
     }
 
-    Ok(live_responses)
+    let mut live_sessions_filtered: HashMap<String, RetrieveItemsContainer> = HashMap::new();
+    for ct in live_responses {
+        if live_sessions_filtered.contains_key(&ct.id) {
+            continue;
+        }
+
+        live_sessions_filtered.insert(ct.id.clone(), ct.clone());
+    }
+
+    //Turn the HashMap into a vec of it's values
+    let mut result = Vec::new();
+    for (_, v) in live_sessions_filtered {
+        result.push(v);
+    }
+
+    Ok(result)
 }

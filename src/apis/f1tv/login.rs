@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use crate::apis::f1tv::{LOGIN_ENDPOINT, API_KEY};
+use crate::config::Config;
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -74,4 +75,32 @@ pub fn do_login(username: &str, password: &str) -> Result<SuccessfulLoginRespons
             Err(response)
         }
     }
+}
+
+pub fn get_subscription_token(cfg: Config) -> Option<String> {
+    let subscription_token: Option<String> = {
+        let response_wrapped = do_login(&cfg.f1_username.clone().unwrap(), &cfg.f1_password.clone().unwrap());
+        if response_wrapped.is_err() {
+            print!("Failed to log in to F1TV. ");
+
+            match response_wrapped.err().unwrap().status {
+                Some(503) => {
+                    println!("Got status code 503.");
+                    return None;
+                },
+                Some(403) => {
+                    println!("Got status code 403. Are your credentials correct? Exiting.");
+                    std::process::exit(1);
+                },
+                _ => {
+                    return None;
+                }
+            }
+        }
+
+        let response = response_wrapped.unwrap();
+        Some(response.data.subscription_token)
+    };
+
+    subscription_token
 }

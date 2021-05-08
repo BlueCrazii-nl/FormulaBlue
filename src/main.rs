@@ -1,8 +1,6 @@
 use colored::Colorize;
 use std::time::Duration;
-use crate::apis::f1tv::{get_live_sessions, RetrieveItemsContainer};
-use std::collections::HashMap;
-use crate::apis::f1tv::playback::get_playback_url;
+use crate::apis::f1tv::get_live_sessions;
 use crate::config::Config;
 
 mod config;
@@ -53,68 +51,45 @@ fn main() {
 
 const REFRESH_INTERVAL_SECONDS: u64 = 10;
 
-fn refresh_races(cfg: Config) {
+pub fn refresh_races(cfg: Config) {
     std::thread::spawn(move || {
-        'infinite_loop: loop {
+        let mut running_session_end_time: i64 = 0;
+
+        loop {
             print!("Fetching live sessions...");
-            let sessions = get_live_sessions();
-            if sessions.is_err() {
+            let live_sessions = get_live_sessions();
+            if live_sessions.is_err() {
                 print!("{}\n", "FAIL".red());
-                println!("{}", sessions.err().unwrap());
+                println!("{}", live_sessions.err().unwrap());
 
                 std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
             } else {
                 print!("{}\n", "OK".green());
-                let sessions_unwrapped = sessions.unwrap();
+                let live_sessions = live_sessions.unwrap();
 
-                let mut final_sessions: HashMap<String, RetrieveItemsContainer> = HashMap::new();
-                for ct in sessions_unwrapped {
-                    if final_sessions.contains_key(&ct.id) {
-                        continue;
-                    }
+                println!("Found {} live sessions!", live_sessions.len());
+                println!("Starting FFMPEG streams.");
 
-                    final_sessions.insert(ct.id.clone(), ct.clone());
+                for session in live_sessions.clone() {
+                    running_session_end_time = session.metadata.emf_attributes.session_end_date + (10_i64 * 60_i64);
+                    ffmpeg::stream(session.id, session.metadata.emf_attributes.session_end_date, cfg.clone());
                 }
 
-                println!("Found {} live sessions!", final_sessions.len());
-                let subscription_token: Option<String> = if final_sessions.len() > 0 {
-                    let response_wrapped = apis::f1tv::login::do_login(&cfg.f1_username.clone().unwrap(), &cfg.f1_password.clone().unwrap());
-                    if response_wrapped.is_err() {
-                        print!("Failed to log in to F1TV. ");
-
-                        match response_wrapped.err().unwrap().status {
-                            Some(503) => {
-                                println!("Got status code 503. Retrying in {} seconds.", REFRESH_INTERVAL_SECONDS);
-                                continue 'infinite_loop;
-                            },
-                            Some(403) => {
-                                println!("Got status code 403. Are your credentials correct? Exiting.");
-                                std::process::exit(1);
-                            },
-                            _ => {
-                                println!("Unknown error. Retrying in {} seconds.", REFRESH_INTERVAL_SECONDS);
-                                std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
-                                continue 'infinite_loop;
-                            }
-                        }
+                let sleep_time = {
+                    if live_sessions.len() > 0 {
+                        running_session_end_time - chrono::Utc::now().timestamp()
+                    } else {
+                        REFRESH_INTERVAL_SECONDS as i64
                     }
-
-                    let response = response_wrapped.unwrap();
-                    Some(response.data.subscription_token)
-                } else {
-                    None
                 };
 
-                for (_, v) in final_sessions {
-                    let hls = get_playback_url(&subscription_token.clone().unwrap(), &v.id).expect("Failed to get HLS Stream");
-                    println!("Starting FFMPEG streams.");
-                    ffmpeg::stream(hls, v.metadata.emf_attributes.session_end_date, cfg.clone())
-                }
-
-                println!("Sleeping for {} seconds.", REFRESH_INTERVAL_SECONDS);
-                std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
+                println!("Sleeping for {} seconds.", sleep_time);
+                std::thread::sleep(Duration::from_secs(sleep_time as u64));
                 continue;
             }
         }
     }).join().expect("");
 }
+
+
+

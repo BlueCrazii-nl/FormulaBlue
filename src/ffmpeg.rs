@@ -1,100 +1,95 @@
 use std::process::Command;
 use crate::config::Config;
-use std::sync::mpsc::TryRecvError;
 use std::time::Duration;
 
-pub fn stream(url: String, end_time: i64, cfg: Config) {
+pub fn stream(session_id: String, end_time: i64, cfg: Config) {
+    let cfg_1 = cfg.clone();
+    let cfg_2 = cfg.clone();
+
     let ffmpeg_str = cfg.ffmpeg_command.unwrap();
     let ingest_url = cfg.rtmp_ingest.unwrap();
 
-    //Construct the FFMPEG command for the NED stream
-    let ffmpeg_str_ned = ffmpeg_str
-        .replace("{source_url}", &url)
-        .replace("{ingest}", &ingest_url)
-        .replace("{lang}", "nld")
-        .replace("{key}", &cfg.ned_key.unwrap());
+    let ffmpeg_str_1 = ffmpeg_str.clone();
+    let ingest_url_1 = ingest_url.clone();
 
-    //Construct the FFMPEG command for the ENG stream
-    let ffmpeg_str_eng = ffmpeg_str
-        .replace("{source_url}", &url)
-        .replace("{ingest}", &ingest_url)
-        .replace("{lang}", "eng")
-        .replace("{key}", &cfg.eng_key.unwrap());
+    let end_time = end_time + 10i64 * 60i64;
 
-    //We let the stream play 10 minutes longer than its session end time
-    let adjusted_end_time = end_time + (10_i64 * 60_i64);
-
-    //Create channels so both threads can signal each other when they exit
-    let (tx_ned, rx_ned) = std::sync::mpsc::channel();
-    let (tx_eng, rx_eng) = std::sync::mpsc::channel();
-
-    //NED Stream
+    //NED loop
+    let session_id_1 = session_id.clone();
     std::thread::spawn(move || {
-        let mut child = {
-            Command::new("sh")
-                .arg("-c")
-                .arg(&ffmpeg_str_ned)
-                .spawn()
-                .expect("Unable to launch ffmpeg")
-        };
+        while chrono::Utc::now().timestamp() < end_time {
+            let subscription_token = crate::apis::f1tv::login::get_subscription_token(cfg_1.clone());
+            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token.unwrap(), &session_id_1);
 
-        //As long as the current time is less than our planned end time
-        //we want to check if ffmpeg has failed (usually caused by an issue with F1TV)
-        //If so, we want to restart it
-        while chrono::Utc::now().timestamp() < adjusted_end_time {
-            //Check if the command has exited
-            match child.try_wait() {
-                Ok(Some(_)) => break,
-                _ => {}
-            }
+            //Construct the FFMPEG command for the NED stream
+            let ffmpeg_command = ffmpeg_str_1
+                .replace("{source_url}", &hls_url.unwrap())
+                .replace("{ingest}", &ingest_url_1)
+                .replace("{lang}", "nld")
+                .replace("{key}", &cfg_1.clone().ned_key.unwrap());
 
-            //Check if the other thread has exited
-            match rx_eng.try_recv() {
-                Ok(_) | Err(TryRecvError::Disconnected) => break,
-                _ => {}
-            }
-
-            std::thread::sleep(Duration::from_secs(5));
+            stream_ned(ffmpeg_command, end_time);
         }
-
-        child.kill().expect("Unable to kill ffmpeg");
-
-        //Signal to other thread to stop the command
-        tx_ned.send(1).unwrap_or_else(|_| eprintln!("Unable to send a message to the ENG thread to stop."));
     });
 
-    //ENG Stream
+    //ENG loop
     std::thread::spawn(move || {
-        let mut child = {
-            Command::new("sh")
-                .arg("-c")
-                .arg(&ffmpeg_str_eng)
-                .spawn()
-                .expect("Unable to launch ffmpeg")
-        };
+        while chrono::Utc::now().timestamp() < end_time {
+            let subscription_token = crate::apis::f1tv::login::get_subscription_token(cfg_2.clone());
+            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token.unwrap(), &session_id);
 
-        //As long as the current time is less than our planned end time
-        //we want to check if ffmpeg has failed (usually caused by an issue with F1TV)
-        //If so, we want to restart it
-        while chrono::Utc::now().timestamp() > adjusted_end_time {
-            //Check if the command has exited
-            match child.try_wait() {
-                Ok(Some(_)) => break,
-                _ => {}
-            }
+            //Construct the FFMPEG command for the NED stream
+            let ffmpeg_command = ffmpeg_str.clone()
+                .replace("{source_url}", &hls_url.unwrap())
+                .replace("{ingest}", &ingest_url.clone())
+                .replace("{lang}", "eng")
+                .replace("{key}", &cfg_2.clone().eng_key.unwrap());
 
-            //Check if the other thread has exited
-            match rx_ned.try_recv() {
-                Ok(_) | Err(TryRecvError::Disconnected) => break,
-                _ => {}
-            }
+            stream_eng(ffmpeg_command, end_time);
+        }
+    });
+}
 
-            std::thread::sleep(Duration::from_secs(5));
+fn stream_ned(ffmpeg_command: String, end_time: i64) {
+    let mut child = {
+        Command::new("sh")
+            .arg("-c")
+            .arg(&ffmpeg_command)
+            .spawn()
+            .expect("Unable to launch ffmpeg")
+    };
+
+    while chrono::Utc::now().timestamp() < end_time {
+        //Check if the command has exited
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            _ => {}
         }
 
-        child.kill().expect("Unable to kill ffmpeg");
+        std::thread::sleep(Duration::from_secs(5));
+    }
 
-        //Signal to the other thread to stop the command
-        tx_eng.send(1).unwrap_or_else(|_| eprintln!("Unable to send a message to the NED thread to stop."));
-    }).join().unwrap();
+    child.kill().expect("Unable to kill ffmpeg");
+}
+
+fn stream_eng(ffmpeg_command: String, end_time: i64) {
+    let mut child = {
+        Command::new("sh")
+            .arg("-c")
+            .arg(&ffmpeg_command)
+            .spawn()
+            .expect("Unable to launch ffmpeg")
+    };
+
+    while chrono::Utc::now().timestamp() > end_time {
+        //Check if the command has exited
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            _ => {}
+        }
+
+        std::thread::sleep(Duration::from_secs(5));
+    }
+
+    child.kill().expect("Unable to kill ffmpeg");
 }
