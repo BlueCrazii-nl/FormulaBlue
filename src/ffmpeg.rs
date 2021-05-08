@@ -60,7 +60,7 @@ pub fn stream(url: String, end_time: i64, cfg: Config) {
         child.kill().expect("Unable to kill ffmpeg");
 
         //Signal to other thread to stop the command
-        tx_ned.send(1).unwrap();
+        tx_ned.send(1).unwrap_or_else(|_| eprintln!("Unable to send a message to the ENG thread to stop."));
     });
 
     //ENG Stream
@@ -95,6 +95,6 @@ pub fn stream(url: String, end_time: i64, cfg: Config) {
         child.kill().expect("Unable to kill ffmpeg");
 
         //Signal to the other thread to stop the command
-        tx_eng.send(1).unwrap();
+        tx_eng.send(1).unwrap_or_else(|_| eprintln!("Unable to send a message to the NED thread to stop."));
     }).join().unwrap();
 }
