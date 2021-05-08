@@ -71,7 +71,7 @@ pub fn refresh_races(cfg: Config) {
                 println!("Starting FFMPEG streams.");
 
                 for session in live_sessions.clone() {
-                    running_session_end_time = session.metadata.emf_attributes.session_end_date + (10_i64 * 60_i64);
+                    running_session_end_time = session.metadata.emf_attributes.session_end_date + (30_i64 * 60_i64);
                     ffmpeg::stream(session.id, session.metadata.emf_attributes.session_end_date, cfg.clone());
                 }
 

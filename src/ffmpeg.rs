@@ -12,7 +12,7 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
     let ffmpeg_str_1 = ffmpeg_str.clone();
     let ingest_url_1 = ingest_url.clone();
 
-    let end_time = end_time + 10i64 * 60i64;
+    let end_time = end_time + 30i64 * 60i64;
 
     let subscription_token = crate::apis::f1tv::login::get_subscription_token(cfg_1.clone()).unwrap();
     let subscription_token_1 = crate::apis::f1tv::login::get_subscription_token(cfg_1.clone()).unwrap();
