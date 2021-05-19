@@ -73,7 +73,7 @@ fn run_ffmpeg(ffmpeg_command: String, end_time: i64) {
     }
 
     match child.try_wait() {
-        Ok(None) => child.kill().expect("Unable to kill ffmpeg")
+        Ok(None) => child.kill().expect("Unable to kill ffmpeg"),
         _ => {}
     }
 }
