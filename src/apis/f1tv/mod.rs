@@ -48,7 +48,7 @@ pub struct Properties {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Metadata {
     #[serde(rename(deserialize = "emfAttributes"))]
-    pub emf_attributes: EmfAttributes,
+    pub emf_attributes: Option<EmfAttributes>,
     #[serde(rename(deserialize = "longDescription"))]
     pub long_description: String,
     #[serde(rename(deserialize = "objectType"))]
@@ -79,6 +79,10 @@ pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {
         'inner: for ct_inner in ct_outer.retrieve_items.result_obj.containers {
             if ct_inner.metadata.content_sub_type.is_none() {
                 continue 'inner;
+            }
+
+            if ct_inner.metadata.emf_attributes.is_none() {
+
             }
 
             if ct_inner.properties.is_some() && ct_inner.properties.clone().unwrap().get(0).unwrap().series != "FORMULA 1" {
