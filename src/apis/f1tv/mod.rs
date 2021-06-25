@@ -36,7 +36,7 @@ pub struct RetrieveItems {
 #[derive(Deserialize, Debug, Clone)]
 pub struct RetrieveItemsContainer {
     pub id: Option<String>,
-    pub metadata: Metadata,
+    pub metadata: Option<Metadata>,
     pub properties: Option<Vec<Properties>>,
 }
 
@@ -77,19 +77,18 @@ pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {
     let mut live_responses: Vec<RetrieveItemsContainer> = Vec::new();
     for ct_outer in req.result_obj.containers {
         'inner: for ct_inner in ct_outer.retrieve_items.result_obj.containers {
-            if ct_inner.metadata.content_sub_type.is_none() {
+            let metadata = ct_inner.metadata.clone().unwrap();
+            if metadata.content_sub_type.is_none() {
                 continue 'inner;
             }
 
-            if ct_inner.metadata.emf_attributes.is_none() {
-
-            }
+            if metadata.emf_attributes.is_none() {}
 
             if ct_inner.properties.is_some() && ct_inner.properties.clone().unwrap().get(0).unwrap().series != "FORMULA 1" {
                 continue;
             }
 
-            if ct_inner.metadata.object_type == "VIDEO" && ct_inner.metadata.content_sub_type.clone().unwrap() == "LIVE" {
+            if metadata.object_type == "VIDEO" && metadata.content_sub_type.clone().unwrap() == "LIVE" {
                 live_responses.push(ct_inner)
             }
         }
