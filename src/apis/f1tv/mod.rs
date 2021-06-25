@@ -35,9 +35,9 @@ pub struct RetrieveItems {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct RetrieveItemsContainer {
-    pub id: String,
+    pub id: Option<String>,
     pub metadata: Metadata,
-    pub properties: Option<Vec<Properties>>
+    pub properties: Option<Vec<Properties>>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -97,11 +97,11 @@ pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {
 
     let mut live_sessions_filtered: HashMap<String, RetrieveItemsContainer> = HashMap::new();
     for ct in live_responses {
-        if live_sessions_filtered.contains_key(&ct.id) {
+        if ct.id.is_some() && live_sessions_filtered.contains_key(&ct.id.clone().unwrap()) {
             continue;
         }
 
-        live_sessions_filtered.insert(ct.id.clone(), ct.clone());
+        live_sessions_filtered.insert(ct.id.clone().unwrap(), ct.clone());
     }
 
     //Turn the HashMap into a vec of it's values
