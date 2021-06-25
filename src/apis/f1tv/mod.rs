@@ -77,19 +77,22 @@ pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {
     let mut live_responses: Vec<RetrieveItemsContainer> = Vec::new();
     for ct_outer in req.result_obj.containers {
         'inner: for ct_inner in ct_outer.retrieve_items.result_obj.containers {
-            let metadata = ct_inner.metadata.clone().unwrap();
-            if metadata.content_sub_type.is_none() {
+            if let Some(metadata) = ct_inner.metadata.clone() {
+                if metadata.content_sub_type.is_none() {
+                    continue 'inner;
+                }
+
+                if metadata.emf_attributes.is_none() {}
+
+                if ct_inner.properties.is_some() && ct_inner.properties.clone().unwrap().get(0).unwrap().series != "FORMULA 1" {
+                    continue;
+                }
+
+                if metadata.object_type == "VIDEO" && metadata.content_sub_type.clone().unwrap() == "LIVE" {
+                    live_responses.push(ct_inner)
+                }
+            } else {
                 continue 'inner;
-            }
-
-            if metadata.emf_attributes.is_none() {}
-
-            if ct_inner.properties.is_some() && ct_inner.properties.clone().unwrap().get(0).unwrap().series != "FORMULA 1" {
-                continue;
-            }
-
-            if metadata.object_type == "VIDEO" && metadata.content_sub_type.clone().unwrap() == "LIVE" {
-                live_responses.push(ct_inner)
             }
         }
     }
