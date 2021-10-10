@@ -70,10 +70,24 @@ pub fn refresh_races(cfg: Config) {
                 println!("Found {} live sessions!", live_sessions.len());
                 println!("Starting FFMPEG streams.");
 
+                let token = crate::apis::f1tv::login::get_subscription_token(cfg.clone()).unwrap();
+                println!("Sub token: {}", token);
+
                 for session in live_sessions.clone() {
-                    let emf_attr = session.metadata.unwrap().emf_attributes.unwrap();
+                    let meta = session.metadata.unwrap();
+                    let emf_attr = meta.emf_attributes.unwrap();
                     running_session_end_time = emf_attr.session_end_date + (30_i64 * 60_i64);
-                    ffmpeg::stream(session.id.unwrap(), emf_attr.session_end_date, cfg.clone());
+                    let id = session.id.unwrap();
+                    println!("Session ID: {}", &id);
+
+                    let data_channel_id = crate::apis::f1tv::get_data_channel(&id).unwrap();
+
+                    println!("Data channel ID: {}", data_channel_id);
+
+                    let data_url = crate::apis::f1tv::playback::get_playback_url(&token, &id, Some(&data_channel_id)).unwrap();
+                    println!("URL: {}", data_url);
+                    //ffmpeg::stream(session.id.unwrap(), emf_attr.session_end_date, cfg.clone());
+                    break;
                 }
 
                 let sleep_time = {

@@ -55,8 +55,9 @@ pub struct Metadata {
     pub object_type: String,
     #[serde(rename(deserialize = "contentSubtype"))]
     pub content_sub_type: Option<String>,
-    pub duration: i64
+    pub duration: i64,
 }
+
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct EmfAttributes {
@@ -70,6 +71,7 @@ pub struct EmfAttributes {
 
 pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {
     let req: LiveSessionResponse = reqwest::blocking::Client::new().get(format!("{}/2.0/R/ENG/{DEFAULT_STREAM_TYPE}/ALL/PAGE/395/F1_TV_Pro_Annual/2", BASE_URL, DEFAULT_STREAM_TYPE = DEFAULT_STREAM_TYPE))
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36 Edg/94.0.992.38")
         .send()?
         .json()?;
 
@@ -113,4 +115,60 @@ pub fn get_live_sessions() -> reqwest::Result<Vec<RetrieveItemsContainer>> {
     }
 
     Ok(result)
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct DataChannelResult {
+    #[serde(rename(deserialize = "resultObj"))]
+    result_obj: DataChannelResultObject
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct DataChannelResultObject {
+    containers: Vec<DataChannelContainer>
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct DataChannelContainer {
+    metadata: DataChannelMetadata
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct DataChannelMetadata {
+    #[serde(rename(deserialize = "additionalStreams"))]
+    pub additional_streams: Vec<AdditionalStream>
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct AdditionalStream {
+    pub title: String,
+    #[serde(rename(deserialize = "playbackUrl"))]
+    pub playback_url: String
+}
+
+
+pub fn get_data_channel(session_id: &str) -> reqwest::Result<String> {
+    let result: DataChannelResult = reqwest::blocking::Client::new().get(format!("{}/2.0/R/ENG/{}/ALL/CONTENT/VIDEO/{}/F1_TV_Pro_Annual/2", BASE_URL, DEFAULT_STREAM_TYPE, session_id))
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36 Edg/94.0.992.38")
+        .send()?
+        .json()?;
+
+    let container = result.result_obj.containers.get(0).expect("No container").clone();
+
+    let data_channel = container.metadata.additional_streams.into_iter()
+        .filter(|f| f.title.eq("DATA"))
+        .collect::<Vec<AdditionalStream>>()
+        .remove(0)
+        .playback_url
+        .split("channelId")
+        .collect::<Vec<&str>>()
+        .last()
+        .expect("Failed to find data channel ID")
+        .split("&")
+        .collect::<Vec<&str>>()
+        .first()
+        .expect("Missing data channel ID")
+        .replace("=", "");
+
+    Ok(data_channel)
 }
