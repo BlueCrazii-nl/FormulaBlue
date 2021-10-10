@@ -8,9 +8,10 @@ pub struct Config {
     pub rtmp_ingest:   Option<String>,
     pub ned_key:        Option<String>,
     pub eng_key:        Option<String>,
-    pub data_key        Option<String>,
+    pub data_key:        Option<String>,
     pub tmpurl:         Option<String>,
-    pub ffmpeg_command: Option<String>
+    pub ffmpeg_command: Option<String>,
+    pub data_command:   Option<String>,
 }
 
 impl Default for Config {
@@ -21,9 +22,10 @@ impl Default for Config {
             rtmp_ingest: None,
             ned_key: None,
             eng_key: None,
-            data_key: None
+            data_key: None,
             tmpurl: None,
-            ffmpeg_command: Some("ffmpeg -re -i \"{source_url}\" -c:a aac -ac 2 -b:a 128k -c:v libx264 -pix_fmt yuv420p -b:v 8000k -bufsize 3000k -s 1920x1080 -filter:v fps=50 -map 0:v:5 -map 0:m:language:{lang} -s 1920x1080 -f flv rtmp://{ingest}/{key}".to_string())
+            ffmpeg_command: Some("ffmpeg -re -i \"{source_url}\" -c:a aac -ac 2 -b:a 128k -c:v libx264 -pix_fmt yuv420p -b:v 8000k -bufsize 3000k -s 1920x1080 -filter:v fps=50 -map 0:v:5 -map 0:m:language:{lang} -s 1920x1080 -f flv rtmp://{ingest}/{key}".to_string()),
+            data_command: None
         }
     }
 }
@@ -56,6 +58,10 @@ impl Config {
 
         if self.ffmpeg_command.is_none() {
             return (false, "ffmpeg_command");
+        }
+
+        if self.data_command.is_none() {
+            return (false, "data_command");
         }
 
         (true, "")

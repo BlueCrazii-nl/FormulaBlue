@@ -13,16 +13,19 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
     let ffmpeg_str_1 = ffmpeg_str.clone();
     let ingest_url_1 = ingest_url.clone();
 
-    let ffmpeg_str_2 = ffmpeg_str.clone();
+    let ffmpeg_str_2 = cfg_3.clone().data_command.unwrap();
     let ingest_url_2 = ingest_url.clone();
 
     let end_time = end_time + 30i64 * 60i64;
 
     let subscription_token = crate::apis::f1tv::login::get_subscription_token(cfg_1.clone()).unwrap();
-    let subscription_token_1 = crate::apis::f1tv::login::get_subscription_token(cfg_1.clone()).unwrap();
+    let subscription_token_1 = subscription_token.clone();
+    let subscription_token_2 = subscription_token.clone();
+
+    let session_id_1 = session_id.clone();
+    let session_id_2 = session_id.clone();
 
     //NED loop
-    let session_id_1 = session_id.clone();
     std::thread::spawn(move || {
         while chrono::Utc::now().timestamp() < end_time {
             let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token, &session_id_1, None);
@@ -57,20 +60,19 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
     }).join().unwrap();
 
     //DATA CHANNEL
-    let session_id_2 = session_id.clone();
     std::thread::spawn(move || {
         println!("Starting data channel stream");
 
         while chrono::Utc::now().timestamp() < end_time {
             let data_channel = crate::apis::f1tv::get_data_channel(&session_id_2).expect("Failed to get Data channel ID");
-            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_1, &session_id, Some(&data_channel));
+            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_2, &session_id_2, Some(&data_channel));
 
             //Construct the FFMPEG command for the data stream
             let ffmpeg_command = ffmpeg_str_2.clone()
                 .replace("{source_url}", &hls_url.unwrap())
                 .replace("{ingest}", &ingest_url_2.clone())
                 .replace("{lang}", "eng")
-                .replace("{key}", &cfg_2.clone().data_key.unwrap());
+                .replace("{key}", &cfg_3.clone().data_key.unwrap());
             run_ffmpeg(ffmpeg_command, end_time);
         }
     });
