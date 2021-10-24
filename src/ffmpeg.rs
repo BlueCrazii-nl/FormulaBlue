@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use crate::config::Config;
 use std::time::Duration;
 
@@ -27,6 +27,8 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
 
     //NED loop
     std::thread::spawn(move || {
+        println!("Starting NED Stream");
+
         while chrono::Utc::now().timestamp() < end_time {
             let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token, &session_id_1, None);
 
@@ -37,7 +39,7 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
                 .replace("{lang}", "nld")
                 .replace("{key}", &cfg_1.clone().ned_key.unwrap());
 
-            run_ffmpeg(ffmpeg_command, end_time);
+            run_ffmpeg(ffmpeg_command, end_time, "NED");
         }
     });
 
@@ -55,9 +57,9 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
                 .replace("{lang}", "eng")
                 .replace("{key}", &cfg_2.clone().eng_key.unwrap());
 
-            run_ffmpeg(ffmpeg_command, end_time);
+            run_ffmpeg(ffmpeg_command, end_time, "ENG");
         }
-    }).join().unwrap();
+    });
 
     //DATA CHANNEL
     std::thread::spawn(move || {
@@ -73,29 +75,38 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
                 .replace("{ingest}", &ingest_url_2.clone())
                 .replace("{lang}", "eng")
                 .replace("{key}", &cfg_3.clone().data_key.unwrap());
-            run_ffmpeg(ffmpeg_command, end_time);
+            run_ffmpeg(ffmpeg_command, end_time, "DATA");
         }
-    });
+    }).join().unwrap();
 }
 
-fn run_ffmpeg(ffmpeg_command: String, end_time: i64) {
+fn run_ffmpeg(ffmpeg_command: String, end_time: i64, source: &str) {
+    println!("Starting ffmpeg stream '{}'", source);
+
     let mut child = {
         Command::new("sh")
             .arg("-c")
             .arg(&ffmpeg_command)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Unable to launch ffmpeg")
     };
 
-    while chrono::Utc::now().timestamp() < end_time {
+
+    let exit_status = while chrono::Utc::now().timestamp() < end_time {
         //Check if the command has exited
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(e)) => break e,
             _ => {}
         }
 
         std::thread::sleep(Duration::from_secs(5));
-    }
+    };
+
+    println!("FFmpeg has exited for {} with code {}", source, child);
+    println!("Stdout: {:?}", child.stdout);
+    println!("Stderr: {:?}", child.stderr);
 
     match child.try_wait() {
         Ok(None) => child.kill().expect("Unable to kill ffmpeg"),

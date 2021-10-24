@@ -77,16 +77,15 @@ pub fn refresh_races(cfg: Config) {
                     let meta = session.metadata.unwrap();
                     let emf_attr = meta.emf_attributes.unwrap();
                     running_session_end_time = emf_attr.session_end_date + (30_i64 * 60_i64);
-                    let id = session.id.unwrap();
-                    println!("Session ID: {}", &id);
+                    //let id = session.id.unwrap();
+                    //println!("Session ID: {}", &id);
 
-                    let data_channel_id = crate::apis::f1tv::get_data_channel(&id).unwrap();
+                  //  let data_channel_id = crate::apis::f1tv::get_data_channel(&id).unwrap();
 
-                    println!("Data channel ID: {}", data_channel_id);
+                    //println!("Data channel ID: {}", data_channel_id);
 
-                    let data_url = crate::apis::f1tv::playback::get_playback_url(&token, &id, Some(&data_channel_id)).unwrap();
-                    println!("URL: {}", data_url);
-                    //ffmpeg::stream(session.id.unwrap(), emf_attr.session_end_date, cfg.clone());
+//                    let data_url = crate::apis::f1tv::playback::get_playback_url(&token, &id, Some(&data_channel_id)).unwrap();
+                    ffmpeg::stream(session.id.unwrap(), emf_attr.session_end_date, cfg.clone());
                     break;
                 }
 
