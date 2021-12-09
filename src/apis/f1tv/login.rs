@@ -2,6 +2,9 @@ use serde::{Serialize, Deserialize};
 use crate::apis::f1tv::{LOGIN_ENDPOINT, API_KEY};
 use crate::config::Config;
 use std::time::Duration;
+use anyhow::Result;
+use log::warn;
+use thiserror::Error;
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -18,8 +21,6 @@ pub struct SuccessfulLoginResponse {
     pub password_is_temporary:  bool,
     pub subscriber:             Subscriber,
     pub country:                String,
-
-    #[serde(rename(deserialize = "data"))]
     pub data:                   SubscriptionData
 }
 
@@ -48,61 +49,49 @@ pub struct FailedLoginResponse {
     pub detail: Option<String>
 }
 
-pub fn do_login(username: &str, password: &str) -> Result<SuccessfulLoginResponse, FailedLoginResponse> {
+#[derive(Debug, Error)]
+pub enum LoginError {
+    #[error("Reqwest error: {0:?}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("You are unauthorized")]
+    Unauthorized,
+    #[error("Unknown error")]
+    Unknown,
+    #[error("Service is temporarily unavailable")]
+    ServiceUnavailable,
+}
+
+pub fn do_login(username: &str, password: &str) -> std::result::Result<SuccessfulLoginResponse, LoginError> {
     let req = reqwest::blocking::Client::new()
         .post(LOGIN_ENDPOINT)
         .header("User-Agent", "RaceControl")
         .header("apiKey", API_KEY)
         .json(&LoginRequest { login: username, password })
-        .send()
-        .expect("An error occurred while sending a login request to F1TV.");
+        .send()?;
 
     return match req.status() {
         reqwest::StatusCode::OK => {
-            let response: SuccessfulLoginResponse = req.json().expect("An error occurred while deserializing a login response");
+            let response: SuccessfulLoginResponse = req.json()?;
             Ok(response)
         },
-        reqwest::StatusCode::UNAUTHORIZED => {
-            let mut response: FailedLoginResponse = req.json().expect("An error occurred while deserializing a login response");
-            response.status = Some(401);
-            Err(response)
-        },
-        _ => {
-            let response = FailedLoginResponse {
-                status: Some(req.status().as_u16()),
-                detail: None
-            };
-
-            Err(response)
-        }
+        reqwest::StatusCode::SERVICE_UNAVAILABLE => Err(LoginError::ServiceUnavailable.into()),
+        reqwest::StatusCode::UNAUTHORIZED => Err(LoginError::Unauthorized.into()),
+        _ => Err(LoginError::Unknown.into())
     }
 }
 
-pub fn get_subscription_token(cfg: Config) -> Option<String> {
-    let subscription_token: Option<String> = {
-        let response_wrapped = do_login(&cfg.f1_username.clone().unwrap(), &cfg.f1_password.clone().unwrap());
-        if response_wrapped.is_err() {
-            print!("Failed to log in to F1TV. ");
-
-            match response_wrapped.err().unwrap().status {
-                Some(503) => {
-                    println!("Got status code 503.");
+pub fn get_subscription_token(cfg: &Config) -> Result<String> {
+    match do_login(&cfg.f1_username, &cfg.f1_password) {
+        Ok(l) => Ok(l.data.subscription_token),
+        Err(e) => {
+            match e {
+                LoginError::ServiceUnavailable => {
+                    warn!("Got status code 503 while attempting to log in. Retrying in 5 seconds");
                     std::thread::sleep(Duration::from_secs(5));
-                    return get_subscription_token(cfg);
+                    get_subscription_token(cfg)
                 },
-                Some(403) => {
-                    println!("Got status code 403. Are your credentials correct? Exiting.");
-                    std::process::exit(1);
-                },
-                _ => {
-                    return None;
-                }
+                _ => Err(e.into())
             }
         }
-
-        let response = response_wrapped.unwrap();
-        Some(response.data.subscription_token)
-    };
-
-    subscription_token
+    }
 }

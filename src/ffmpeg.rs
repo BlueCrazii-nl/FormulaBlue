@@ -1,43 +1,36 @@
+use std::io::Read;
 use std::process::{Command, Stdio};
 use crate::config::Config;
 use std::time::Duration;
+use log::{debug, info, trace};
 
 pub fn stream(session_id: String, end_time: i64, cfg: Config) {
-    let cfg_1 = cfg.clone();
-    let cfg_2 = cfg.clone();
-    let cfg_3 = cfg.clone();
-
-    let ffmpeg_str = cfg.ffmpeg_command.unwrap();
-    let ingest_url = cfg.rtmp_ingest.unwrap();
-
-    let ffmpeg_str_1 = ffmpeg_str.clone();
-    let ingest_url_1 = ingest_url.clone();
-
-    let ffmpeg_str_2 = cfg_3.clone().data_command.unwrap();
-    let ingest_url_2 = ingest_url.clone();
+    let cfg_ned = cfg.clone();
+    let cfg_eng = cfg.clone();
+    let cfg_data = cfg.clone();
 
     let end_time = end_time + 30i64 * 60i64;
 
-    let subscription_token = crate::apis::f1tv::login::get_subscription_token(cfg_1.clone()).unwrap();
-    let subscription_token_1 = subscription_token.clone();
-    let subscription_token_2 = subscription_token.clone();
+    let subscription_token_ned = crate::apis::f1tv::login::get_subscription_token(&cfg).unwrap();
+    let subscription_token_eng = subscription_token_ned.clone();
+    let subscription_token_data = subscription_token_ned.clone();
 
-    let session_id_1 = session_id.clone();
-    let session_id_2 = session_id.clone();
+    let session_id_ned = session_id.clone();
+    let session_id_eng = session_id.clone();
+    let session_id_data = session_id.clone();
 
     //NED loop
     std::thread::spawn(move || {
-        println!("Starting NED Stream");
+        info!("Starting NED Stream for session {}", session_id_ned);
 
-        while chrono::Utc::now().timestamp() < end_time {
-            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token, &session_id_1, None);
+        while time::OffsetDateTime::now_utc().unix_timestamp() < end_time {
+            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_ned, &session_id_ned, None);
 
-            //Construct the FFMPEG command for the NED stream
-            let ffmpeg_command = ffmpeg_str_1
+            let ffmpeg_command = cfg_ned.ffmpeg_command
                 .replace("{source_url}", &hls_url.unwrap())
-                .replace("{ingest}", &ingest_url_1)
+                .replace("{ingest}", &cfg_ned.rtmp_ingest)
                 .replace("{lang}", "nld")
-                .replace("{key}", &cfg_1.clone().ned_key.unwrap());
+                .replace("{key}", &cfg_ned.ned_key);
 
             run_ffmpeg(ffmpeg_command, end_time, "NED");
         }
@@ -45,17 +38,17 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
 
     //ENG loop
     std::thread::spawn(move || {
-        println!("Starting ENG Stream");
+        info!("Starting ENG Stream for session {}", session_id_eng);
 
         while chrono::Utc::now().timestamp() < end_time {
-            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_1, &session_id, None);
+            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_eng, &session_id_eng, None);
 
             //Construct the FFMPEG command for the NED stream
-            let ffmpeg_command = ffmpeg_str.clone()
+            let ffmpeg_command = cfg_eng.ffmpeg_command
                 .replace("{source_url}", &hls_url.unwrap())
-                .replace("{ingest}", &ingest_url.clone())
+                .replace("{ingest}", &cfg_eng.rtmp_ingest)
                 .replace("{lang}", "eng")
-                .replace("{key}", &cfg_2.clone().eng_key.unwrap());
+                .replace("{key}", &cfg_eng.eng_key);
 
             run_ffmpeg(ffmpeg_command, end_time, "ENG");
         }
@@ -63,26 +56,24 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
 
     //DATA CHANNEL
     std::thread::spawn(move || {
-        println!("Starting data channel stream");
+        info!("Starting data channel stream for session {}", session_id_data);
 
         while chrono::Utc::now().timestamp() < end_time {
-            let data_channel = crate::apis::f1tv::get_data_channel(&session_id_2).expect("Failed to get Data channel ID");
-            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_2, &session_id_2, Some(&data_channel));
+            let data_channel = crate::apis::f1tv::get_data_channel(&session_id_data).expect("Failed to get Data channel ID");
+            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_data, &session_id_data, Some(&data_channel));
 
             //Construct the FFMPEG command for the data stream
-            let ffmpeg_command = ffmpeg_str_2.clone()
+            let ffmpeg_command = cfg_data.data_command
                 .replace("{source_url}", &hls_url.unwrap())
-                .replace("{ingest}", &ingest_url_2.clone())
+                .replace("{ingest}", &cfg_data.rtmp_ingest)
                 .replace("{lang}", "eng")
-                .replace("{key}", &cfg_3.clone().data_key.unwrap());
+                .replace("{key}", &cfg_data.data_key);
             run_ffmpeg(ffmpeg_command, end_time, "DATA");
         }
     }).join().unwrap();
 }
 
 fn run_ffmpeg(ffmpeg_command: String, end_time: i64, source: &str) {
-    println!("Starting ffmpeg stream '{}'", source);
-
     let mut child = {
         Command::new("sh")
             .arg("-c")
@@ -93,21 +84,33 @@ fn run_ffmpeg(ffmpeg_command: String, end_time: i64, source: &str) {
             .expect("Unable to launch ffmpeg")
     };
 
-
-    let exit_status = while chrono::Utc::now().timestamp() < end_time {
+    let mut exit = None;
+    while time::OffsetDateTime::now_utc().unix_timestamp() < end_time {
         //Check if the command has exited
         match child.try_wait() {
-            Ok(Some(e)) => break e,
+            Ok(Some(e)) => {
+                // FFMPEG has exited
+                exit = Some(e);
+                break;
+            },
             _ => {}
         }
-
         std::thread::sleep(Duration::from_secs(5));
-    };
+    }
 
-    println!("FFmpeg has exited for {} with code {}", source, child);
-    println!("Stdout: {:?}", child.stdout);
-    println!("Stderr: {:?}", child.stderr);
+    if let Some(exit) = exit {
+        debug!("FFMPEG stream {} exited. Exit code: {:?}", source, exit.code());
 
+        let mut stdout = String::default();
+        let mut stderr = String::default();
+        child.stdout.take().expect("Missing stdout").read_to_string(&mut stdout).expect("Failed to read stdout");
+        child.stderr.take().expect("Missing stderr").read_to_string(&mut stderr).expect("Failed to read stderr");
+
+        trace!("Stdout: {}", stdout);
+        trace!("Stderr: {}", stderr);
+    } else { unreachable!() }
+
+    // Kill FFMPEG if it hasnt killed itself yet
     match child.try_wait() {
         Ok(None) => child.kill().expect("Unable to kill ffmpeg"),
         _ => {}

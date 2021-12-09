@@ -1,109 +1,87 @@
-use colored::Colorize;
+use std::process::exit;
 use std::time::Duration;
 use crate::apis::f1tv::get_live_sessions;
 use crate::config::Config;
+use log::{warn, info, debug, error};
 
 mod config;
 mod apis;
 mod ffmpeg;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-fn main() {
-    println!("Starting FormulaBlue v{}", VERSION);
-    print!("Reading configuration...");
-
-    let cfg = config::read();
-    let cfg_verify = cfg.verify();
-    if !cfg_verify.0 {
-        print!("{}\n", "FAIL".red());
-        println!("Configuration did not pass checks: Field '{}' is empty.", cfg_verify.1);
-        std::process::exit(1);
-    } else {
-        print!("{}\n", "OK".green());
-    }
-
-    print!("Attempting to log in to F1TV...");
-    let cfg_cloned = cfg.clone();
-    let login_response = apis::f1tv::login::do_login(&cfg_cloned.f1_username.unwrap(), &cfg_cloned.f1_password.unwrap());
-    if login_response.is_err() {
-        print!("{}\n", "FAIL".red());
-
-        let err = login_response.err().unwrap();
-        if err.detail.is_some() {
-            println!("Login to F1TV failed. The reason is known as follows: '{}'", err.detail.unwrap());
-        } else {
-            println!("Login to F1TV failed. The reason is unknown. (status: {})", err.status.unwrap());
-        }
-
-        std::process::exit(1);
-    } else {
-        print!("{}\n", "OK".green());
-    }
-
-    if cfg.tmpurl.is_some() {
-        let url = cfg.clone().tmpurl.unwrap();
-        ffmpeg::stream(url, chrono::Utc::now().timestamp() + (60_i64 * 60_i64), cfg);
-    } else {
-        refresh_races(cfg);
-    }
-}
-
 const REFRESH_INTERVAL_SECONDS: u64 = 10;
 
-pub fn refresh_races(cfg: Config) {
-    std::thread::spawn(move || {
-        let mut running_session_end_time: i64 = 0;
+fn main() {
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", format!("{}=INFO", env!("CARGO_PKG_NAME")));
+    }
+    env_logger::init();
 
-        loop {
-            print!("Fetching live sessions...");
-            let live_sessions = get_live_sessions();
-            if live_sessions.is_err() {
-                print!("{}\n", "FAIL".red());
-                println!("{}", live_sessions.err().unwrap());
+    info!("Starting FormulaBlue v{}", VERSION);
+    info!("Reading configuration...");
+    let config = match Config::new() {
+        Ok(c) => c,
+        Err(e) => {
+            error!("Failed to read configuration file: {:?}", e);
+            exit(1);
+        }
+    };
 
+    info!("Logging in to F1TV");
+    match apis::f1tv::login::do_login(&config.f1_username, &config.f1_password) {
+        Ok(_) => debug!("Logged in"),
+        Err(e) => {
+            error!("Failed to log in to F1TV: {}", e);
+            exit(1);
+        }
+    }
+
+    if let Some(ref _test_session_id) = config.test_session_id {
+        warn!("Test session ID was supplied. Running in test mode!");
+        todo!("This has not been implemented yet");
+    }
+
+    loop {
+        info!("Fetching live sessions");
+        let live_sessions = match get_live_sessions() {
+            Ok(l) => l,
+            Err(e) => {
+                warn!("Failed to fetch live sessions, trying again later: {:?}", e);
                 std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
-            } else {
-                print!("{}\n", "OK".green());
-                let live_sessions = live_sessions.unwrap();
-
-                println!("Found {} live sessions!", live_sessions.len());
-                println!("Starting FFMPEG streams.");
-
-                let token = crate::apis::f1tv::login::get_subscription_token(cfg.clone()).unwrap();
-                println!("Sub token: {}", token);
-
-                for session in live_sessions.clone() {
-                    let meta = session.metadata.unwrap();
-                    let emf_attr = meta.emf_attributes.unwrap();
-                    running_session_end_time = emf_attr.session_end_date + (30_i64 * 60_i64);
-                    //let id = session.id.unwrap();
-                    //println!("Session ID: {}", &id);
-
-                  //  let data_channel_id = crate::apis::f1tv::get_data_channel(&id).unwrap();
-
-                    //println!("Data channel ID: {}", data_channel_id);
-
-//                    let data_url = crate::apis::f1tv::playback::get_playback_url(&token, &id, Some(&data_channel_id)).unwrap();
-                    ffmpeg::stream(session.id.unwrap(), emf_attr.session_end_date, cfg.clone());
-                    break;
-                }
-
-                let sleep_time = {
-                    if live_sessions.len() > 0 {
-                        running_session_end_time - chrono::Utc::now().timestamp()
-                    } else {
-                        REFRESH_INTERVAL_SECONDS as i64
-                    }
-                };
-
-                println!("Sleeping for {} seconds.", sleep_time);
-                std::thread::sleep(Duration::from_secs(sleep_time as u64));
                 continue;
             }
+        };
+        debug!("Fetched successfully");
+        info!("Found {} live sessions", live_sessions.len());
+        if live_sessions.is_empty() {
+            info!("Sleeping for {} seconds", REFRESH_INTERVAL_SECONDS);
+            std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
+            continue;
         }
-    }).join().expect("");
+
+        debug!("Requesting subscription token");
+        let token = match crate::apis::f1tv::login::get_subscription_token(&config) {
+            Ok(t) => t,
+            Err(e) => {
+                warn!("Failed to fetch subscription token: {:?}. Retrying again later", e);
+                std::thread::sleep(Duration::from_secs(REFRESH_INTERVAL_SECONDS));
+                continue;
+            }
+        };
+        debug!("Got subscription token {}", &token);
+        let session = live_sessions.first().unwrap(); // Safe due to is_empty() check above
+
+        let metadata = session.metadata.as_ref().unwrap();
+        let emf_attr = metadata.emf_attributes.as_ref().unwrap();
+        let end_time = time::OffsetDateTime::from_unix_timestamp(emf_attr.session_end_date).expect("Unable to convert end timestamp to OffsetDateTime").checked_add(time::Duration::minutes(30)).expect("Unable to add Duration");
+        debug!("Session ends at {}-{}-{} {}:{}:{}", end_time.year(), end_time.month(), end_time.day(), end_time.hour(), end_time.minute(), end_time.second());
+
+        debug!("Starting FFMPEG streams");
+        ffmpeg::stream(session.id.as_ref().unwrap().to_string(), emf_attr.session_end_date, config.clone());
+
+
+        let sleep_time = (end_time - time::OffsetDateTime::now_utc()).whole_seconds();
+        info!("Sleeping main thread for {} seconds.", sleep_time);
+        std::thread::sleep(Duration::from_secs(sleep_time as u64));
+    }
 }
-
-
-
