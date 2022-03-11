@@ -8,7 +8,6 @@ mod config;
 mod apis;
 mod ffmpeg;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 const REFRESH_INTERVAL_SECONDS: u64 = 10;
 
 fn main() {
@@ -17,28 +16,17 @@ fn main() {
     }
     env_logger::init();
 
-    info!("Starting FormulaBlue v{}", VERSION);
+    info!("Starting FormulaBlue v{}", env!("CARGO_PKG_VERSION"));
     info!("Reading configuration...");
-    let config = match Config::new() {
-        Ok(c) => c,
-        Err(e) => {
-            error!("Failed to read configuration file: {:?}", e);
-            exit(1);
-        }
-    };
+    let config = Config::new().expect("Reading configuration");
 
     info!("Logging in to F1TV");
-    match apis::f1tv::login::do_login(&config.f1_username, &config.f1_password) {
+    match apis::f1tv::login::do_login(&config.f1tv.username, &config.f1tv.password) {
         Ok(_) => debug!("Logged in"),
         Err(e) => {
             error!("Failed to log in to F1TV: {}", e);
             exit(1);
         }
-    }
-
-    if let Some(ref _test_session_id) = config.test_session_id {
-        warn!("Test session ID was supplied. Running in test mode!");
-        todo!("This has not been implemented yet");
     }
 
     loop {
@@ -73,7 +61,7 @@ fn main() {
 
         let metadata = session.metadata.as_ref().unwrap();
         let emf_attr = metadata.emf_attributes.as_ref().unwrap();
-        let end_time = time::OffsetDateTime::from_unix_timestamp(emf_attr.session_end_date).expect("Unable to convert end timestamp to OffsetDateTime").checked_add(time::Duration::minutes(30)).expect("Unable to add Duration");
+        let end_time = time::OffsetDateTime::from_unix_timestamp(emf_attr.session_end_date / 1000).expect("Unable to convert end timestamp to OffsetDateTime").checked_add(time::Duration::minutes(30)).expect("Unable to add Duration");
         debug!("Session ends at {}-{}-{} {}:{}:{}", end_time.year(), end_time.month(), end_time.day(), end_time.hour(), end_time.minute(), end_time.second());
 
         debug!("Starting FFMPEG streams");

@@ -21,6 +21,7 @@ pub struct SuccessfulLoginResponse {
     pub password_is_temporary:  bool,
     pub subscriber:             Subscriber,
     pub country:                String,
+    #[serde(rename = "data")]
     pub data:                   SubscriptionData
 }
 
@@ -58,7 +59,7 @@ pub enum LoginError {
     #[error("Unknown error")]
     Unknown,
     #[error("Service is temporarily unavailable")]
-    ServiceUnavailable,
+    ServiceUnavailable
 }
 
 pub fn do_login(username: &str, password: &str) -> std::result::Result<SuccessfulLoginResponse, LoginError> {
@@ -81,7 +82,7 @@ pub fn do_login(username: &str, password: &str) -> std::result::Result<Successfu
 }
 
 pub fn get_subscription_token(cfg: &Config) -> Result<String> {
-    match do_login(&cfg.f1_username, &cfg.f1_password) {
+    match do_login(&cfg.f1tv.username, &cfg.f1tv.password) {
         Ok(l) => Ok(l.data.subscription_token),
         Err(e) => {
             match e {

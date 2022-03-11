@@ -2,7 +2,7 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 use crate::config::Config;
 use std::time::Duration;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 
 pub fn stream(session_id: String, end_time: i64, cfg: Config) {
     let cfg_ned = cfg.clone();
@@ -19,65 +19,68 @@ pub fn stream(session_id: String, end_time: i64, cfg: Config) {
     let session_id_eng = session_id.clone();
     let session_id_data = session_id.clone();
 
-    //NED loop
-    std::thread::spawn(move || {
-        info!("Starting NED Stream for session {}", session_id_ned);
+    crossbeam_utils::thread::scope(|s| {
+        if cfg.streams.ned {
+            s.spawn(move |_| {
+                info!("Starting NED Stream for session {}", session_id_ned);
 
-        while time::OffsetDateTime::now_utc().unix_timestamp() < end_time {
-            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_ned, &session_id_ned, None);
+                while time::OffsetDateTime::now_utc().unix_timestamp() < end_time {
+                    let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_ned, &session_id_ned, None);
 
-            let ffmpeg_command = cfg_ned.ffmpeg_command
-                .replace("{source_url}", &hls_url.unwrap())
-                .replace("{ingest}", &cfg_ned.rtmp_ingest)
-                .replace("{lang}", "nld")
-                .replace("{key}", &cfg_ned.ned_key);
+                    let ffmpeg_command = cfg_ned.commands.ned.as_deref().expect("Fetching NED FFMPEG command")
+                        .replace("{source_url}", &hls_url.unwrap());
 
-            run_ffmpeg(ffmpeg_command, end_time, "NED");
+                    run_ffmpeg(&ffmpeg_command, end_time, "NED");
+                }
+            });
         }
-    });
 
-    //ENG loop
-    std::thread::spawn(move || {
-        info!("Starting ENG Stream for session {}", session_id_eng);
+        if cfg.streams.eng {
+            s.spawn(move |_| {
+                info!("Starting ENG Stream for session {}", session_id_eng);
 
-        while chrono::Utc::now().timestamp() < end_time {
-            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_eng, &session_id_eng, None);
+                while chrono::Utc::now().timestamp() < end_time {
+                    let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_eng, &session_id_eng, None);
 
-            //Construct the FFMPEG command for the NED stream
-            let ffmpeg_command = cfg_eng.ffmpeg_command
-                .replace("{source_url}", &hls_url.unwrap())
-                .replace("{ingest}", &cfg_eng.rtmp_ingest)
-                .replace("{lang}", "eng")
-                .replace("{key}", &cfg_eng.eng_key);
+                    //Construct the FFMPEG command for the NED stream
+                    let ffmpeg_command = cfg_eng.commands.eng.as_deref().expect("Fetching ENG FFMPEG command")
+                        .replace("{source_url}", &hls_url.unwrap());
 
-            run_ffmpeg(ffmpeg_command, end_time, "ENG");
+                    run_ffmpeg(&ffmpeg_command, end_time, "ENG");
+                }
+            });
         }
-    });
 
-    //DATA CHANNEL
-    std::thread::spawn(move || {
-        info!("Starting data channel stream for session {}", session_id_data);
+        if cfg.streams.data {
+            s.spawn(move |_| {
+                info!("Starting data channel stream for session {}", session_id_data);
 
-        while chrono::Utc::now().timestamp() < end_time {
-            let data_channel = crate::apis::f1tv::get_data_channel(&session_id_data).expect("Failed to get Data channel ID");
-            let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_data, &session_id_data, Some(&data_channel));
+                while chrono::Utc::now().timestamp() < end_time {
+                    let data_channel = match crate::apis::f1tv::get_data_channel(&session_id_data) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            warn!("There appears to be no data channel available: {}", e);
+                            return;
+                        }
+                    };
+                    let hls_url = crate::apis::f1tv::playback::get_playback_url(&subscription_token_data, &session_id_data, Some(&data_channel));
 
-            //Construct the FFMPEG command for the data stream
-            let ffmpeg_command = cfg_data.data_command
-                .replace("{source_url}", &hls_url.unwrap())
-                .replace("{ingest}", &cfg_data.rtmp_ingest)
-                .replace("{lang}", "eng")
-                .replace("{key}", &cfg_data.data_key);
-            run_ffmpeg(ffmpeg_command, end_time, "DATA");
+                    //Construct the FFMPEG command for the data stream
+                    let ffmpeg_command = cfg_data.commands.data.as_deref().expect("Fetching DATA command")
+                        .replace("{source_url}", &hls_url.unwrap());
+                    run_ffmpeg(&ffmpeg_command, end_time, "DATA");
+                }
+            });
         }
-    }).join().unwrap();
+
+    }).expect("Spawning threads");
 }
 
-fn run_ffmpeg(ffmpeg_command: String, end_time: i64, source: &str) {
+fn run_ffmpeg(ffmpeg_command: &str, end_time: i64, source: &str) {
     let mut child = {
         Command::new("sh")
             .arg("-c")
-            .arg(&ffmpeg_command)
+            .arg(ffmpeg_command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
