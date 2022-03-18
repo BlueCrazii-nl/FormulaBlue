@@ -19,7 +19,8 @@ pub struct F1TV {
 pub struct Streams {
     pub ned: bool,
     pub eng: bool,
-    pub data: bool
+    pub data: bool,
+    pub stream_for: i64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Default)]

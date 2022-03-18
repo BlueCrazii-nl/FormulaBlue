@@ -4,12 +4,13 @@ use crate::config::Config;
 use std::time::Duration;
 use log::{debug, info, trace, warn};
 
-pub fn stream(session_id: String, end_time: i64, cfg: Config) {
+pub fn stream(session_id: String, _end_time: i64, cfg: Config) {
     let cfg_ned = cfg.clone();
     let cfg_eng = cfg.clone();
     let cfg_data = cfg.clone();
 
-    let end_time = end_time + 30i64 * 60i64;
+    //let end_time = end_time + 30i64 * 60i64;
+    let end_time = time::OffsetDateTime::now_utc().unix_timestamp() + cfg.streams.stream_for;
 
     let subscription_token_ned = crate::apis::f1tv::login::get_subscription_token(&cfg).unwrap();
     let subscription_token_eng = subscription_token_ned.clone();
@@ -94,7 +95,10 @@ fn run_ffmpeg(ffmpeg_command: &str, end_time: i64, source: &str) {
             Ok(Some(e)) => {
                 // FFMPEG has exited
                 exit = Some(e);
-                break;
+
+                if time::OffsetDateTime::now_utc().unix_timestamp() < end_time {
+                    run_ffmpeg(ffmpeg_command, end_time, source);
+                }
             },
             _ => {}
         }
@@ -113,9 +117,14 @@ fn run_ffmpeg(ffmpeg_command: &str, end_time: i64, source: &str) {
         trace!("Stderr: {}", stderr);
     } else { unreachable!() }
 
-    // Kill FFMPEG if it hasnt killed itself yet
-    match child.try_wait() {
-        Ok(None) => child.kill().expect("Unable to kill ffmpeg"),
-        _ => {}
+    if time::OffsetDateTime::now_utc().unix_timestamp() > end_time {
+        // Kill FFMPEG if it hasnt killed itself yet
+        match child.try_wait() {
+            Ok(None) => child.kill().expect("Unable to kill ffmpeg"),
+            _ => {}
+        }
+    } else {
+        run_ffmpeg(ffmpeg_command, end_time, source);
     }
+
 }
